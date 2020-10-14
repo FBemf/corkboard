@@ -2,12 +2,10 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"path"
 
 	"github.com/julienschmidt/httprouter"
@@ -30,10 +28,12 @@ type NoteData struct {
 	Body  string
 }
 
+/*
 type PostNoteData struct {
 	Body     string
 	Password string
 }
+*/
 
 func main() {
 	if b, err := ioutil.ReadFile(PASSWORD_FILE); err == nil {
@@ -97,33 +97,19 @@ func RawNote(resp http.ResponseWriter, _ *http.Request, params httprouter.Params
 }
 
 func PostNote(rsp http.ResponseWriter, req *http.Request, params httprouter.Params) {
-	rawBody := bytes.NewBuffer(nil)
-	_, err := rawBody.ReadFrom(req.Body)
+	body := bytes.NewBuffer(nil)
+	_, err := body.ReadFrom(req.Body)
 	if err != nil {
 		log.Printf("error reading request body: %v", err)
 		return
 	}
-	bodyData := PostNoteData{}
-	err = json.Unmarshal(rawBody.Bytes(), &bodyData)
 	notePath := path.Join(NOTE_PATH, params[0].Value)
-	if bodyData.Password != PASSWORD_VALUE {
+	if req.Header.Get("X-Password") != "\""+PASSWORD_VALUE+"\"" {
 		rsp.WriteHeader(http.StatusForbidden)
 		log.Printf("unauthorized attempt to create %s", notePath)
 		return
 	}
-	f, err := os.OpenFile(notePath, os.O_RDWR|os.O_CREATE, 0755)
-	if err != nil {
-		rsp.WriteHeader(http.StatusInternalServerError)
-		log.Printf("error opening file %s: %v", notePath, err)
-		return
-	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			log.Printf("error closing %s: %v", notePath, err)
-		}
-	}()
-	_, err = f.WriteString(bodyData.Body)
+	err = ioutil.WriteFile(notePath, body.Bytes(), 0755)
 	if err != nil {
 		log.Printf("error writing to file %s: %v", notePath, err)
 		return

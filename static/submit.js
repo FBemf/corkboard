@@ -5,14 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let submitButton = document.getElementById("submit");
     let statusArea = document.getElementById("status");
 
-    /*  
-    passwordBox.addEventListener("keyup", (event) => {
-      if (event.keyCode === 13) {
-        event.preventDefault();
-        submitButton.click();
-      }
-    });
-    */
+    statusArea.textContent = "";
 
     submitButton.addEventListener("click", event => {
         event.preventDefault();
@@ -23,13 +16,11 @@ document.addEventListener("DOMContentLoaded", () => {
             method: "POST",
             cache: "no-cache",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/octet-stream",
+                "X-Password": '"' + password + '"',
             },
             redirect: "follow",
-            body: JSON.stringify({
-                body: body,
-                password: password
-            })
+            body: body,
         }).then(resp => {
             if (resp.ok) {
                 statusArea.textContent = "Posted!";
