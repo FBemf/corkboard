@@ -23,7 +23,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 titleArea.value = "";
                 bodyArea.value = "";
             } else {
-                statusArea.textContent = "Unknown Error!";
+                if (resp.status == 409) {
+                    statusArea.textContent = "That note already exists!";
+                } else if (resp.status == 401) {
+                    statusArea.textContent = "Authorization error. Try reloading the page.";
+                } else {
+                    statusArea.textContent = "Unknown server error";
+                }
             }
         })
     });

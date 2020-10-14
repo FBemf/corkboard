@@ -14,5 +14,10 @@
             <input type="submit" value="Submit" id="submit" name="submit">
             <span id="status"></span>
         </form> 
+        <ul>
+            {{ range .RecentNotes }}
+            <li><a href="/note/{{ . }}">{{ . }}</a></li>
+            {{ end }}
+        </ul>
     </body>
 </html>
