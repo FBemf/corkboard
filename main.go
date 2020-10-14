@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"path"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -15,12 +18,16 @@ import (
 var TEMPLATES_PATH = "templates/"
 var NOTE_PATH = "notes/"
 var STATIC_PATH = "static/"
+var USERNAME = "user"
 var PASSWORD_FILE = "password.txt"
 var PASSWORD_VALUE = ""
+var TOKEN_EXPIRY = 10 * time.Minute
 
 var Templates = makeTemplates()
+var Tokens = make(map[string]time.Time)
 
 type IndexData struct {
+	Token string
 }
 
 type NoteData struct {
@@ -43,7 +50,7 @@ func main() {
 	}
 
 	router := httprouter.New()
-	router.GET("/", Index)
+	router.GET("/", Auth(Index, USERNAME, PASSWORD_VALUE))
 	router.GET("/note/:note", Note)
 	router.POST("/note/:note", PostNote)
 	router.GET("/raw/:note", RawNote)
@@ -60,11 +67,52 @@ func makeTemplates() template.Template {
 	return *t
 }
 
+func makeToken() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	token := base64.StdEncoding.EncodeToString(b)
+	Tokens["token "+token] = time.Now()
+	return token, nil
+}
+
+func Auth(h httprouter.Handle, requiredUser, requiredPassword string) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		// Get the Basic Authentication credentials
+		user, password, hasAuth := r.BasicAuth()
+
+		if hasAuth && user == requiredUser && password == requiredPassword {
+			// Delegate request to the given handle
+			h(w, r, ps)
+		} else {
+			auth := r.Header.Get("Authentication")
+			val, ok := Tokens[auth]
+			if ok && time.Since(val) < TOKEN_EXPIRY {
+				h(w, r, ps)
+			} else {
+				if ok {
+					delete(Tokens, auth)
+				}
+				// Request Basic Authentication otherwise
+				w.Header().Set("WWW-Authenticate", "Basic realm=Restricted")
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			}
+		}
+	}
+}
+
 func Index(resp http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	resp.Header().Set("Content-Type", "text/html; charset=UTF-8")
-	err := Templates.ExecuteTemplate(resp, "index.html", IndexData{})
+	token, err := makeToken()
 	if err != nil {
-		log.Print(err)
+		log.Printf("making token: %v", err)
+		return
+	}
+	err = Templates.ExecuteTemplate(resp, "index.html", IndexData{Token: token})
+	if err != nil {
+		log.Printf("rendering page: %v", err)
 	}
 }
 
