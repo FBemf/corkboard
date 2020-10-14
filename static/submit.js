@@ -3,8 +3,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let bodyArea = document.getElementById("body");
     let submitButton = document.getElementById("submit");
     let statusArea = document.getElementById("status");
-    let tokenArea = document.getElementById("authToken");
-    let token = tokenArea.textContent;
     statusArea.textContent = "";
 
     submitButton.addEventListener("click", event => {
@@ -16,8 +14,6 @@ document.addEventListener("DOMContentLoaded", () => {
             cache: "no-cache",
             headers: {
                 "Content-Type": "application/octet-stream",
-                "Authentication": `token ${token}`
-                //"X-Password": '"' + password + '"',
             },
             redirect: "follow",
             body: body,
