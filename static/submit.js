@@ -19,11 +19,11 @@ document.addEventListener("DOMContentLoaded", () => {
             body: body,
         }).then(resp => {
             if (resp.ok) {
-                statusArea.textContent = "Posted!";
+                statusArea.textContent = "";
                 titleArea.value = "";
                 bodyArea.value = "";
             } else {
-                statusArea.textContent = "Error: Session expired; reload the page";
+                statusArea.textContent = "Unknown Error!";
             }
         })
     });
