@@ -39,10 +39,10 @@ func main() {
 	}
 
 	router := httprouter.New()
-	router.GET("/", Auth(Index, USERNAME, PASSWORD_VALUE))
-	router.GET("/note/:note", Note)
-	router.POST("/note/:note", Auth(PostNote, USERNAME, PASSWORD_VALUE))
-	router.GET("/raw/:note", RawNote)
+	router.GET("/", Auth(Index))
+	router.GET("/note/:note", Auth(Note))
+	router.POST("/note/:note", Auth(PostNote))
+	router.GET("/raw/:note", Auth(RawNote))
 	router.ServeFiles("/static/*filepath", http.Dir(STATIC_PATH))
 	log.Print("Running")
 	log.Fatal(http.ListenAndServe(":8080", router))
@@ -56,7 +56,9 @@ func makeTemplates() template.Template {
 	return *t
 }
 
-func Auth(h httprouter.Handle, requiredUser, requiredPassword string) httprouter.Handle {
+func Auth(h httprouter.Handle) httprouter.Handle {
+	requiredUser := USERNAME
+	requiredPassword := PASSWORD_VALUE
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Get the Basic Authentication credentials
 		user, password, hasAuth := r.BasicAuth()
