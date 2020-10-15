@@ -29,7 +29,8 @@ func Auth(h httprouter.Handle, credentials map[string]bool) httprouter.Handle {
 		// Get the Basic Authentication credentials
 		user, password, hasAuth := r.BasicAuth()
 
-		if (hasAuth && credentials[user+":"+password]) || credentials == nil {
+		_, credsValid := credentials[user+":"+password]
+		if (hasAuth && credsValid) || credentials == nil {
 			// Delegate request to the given handle
 			h(w, r, ps)
 		} else {

@@ -132,7 +132,9 @@ func parseArgs() Config {
 
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
-				config.credentials[scanner.Text()] = true
+				if scanner.Text() != "" {
+					config.credentials[scanner.Text()] = true
+				}
 			}
 
 			if err := scanner.Err(); err != nil {
