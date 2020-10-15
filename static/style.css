@@ -2,7 +2,7 @@ body {
     margin: 40px auto;
     max-width: 650px;
     line-height: 1.6;
-    font-size: 18px;
+    font-size: 16px;
     color: #444;
     padding: 0 10px;
 }
@@ -12,6 +12,8 @@ h1, h2, h3 {
 pre {
     background-color: #eee;
     padding: 20px 30px;
+    white-space: pre-wrap;
+    word-wrap: break-anywhere;
 }
 textarea {
     width: 500px;
