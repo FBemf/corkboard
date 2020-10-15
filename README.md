@@ -47,3 +47,12 @@ Usage of ./corkboard:
     	Path to the directory where html templates are stored. (default "./templates/")
 
 ```
+
+To set up a new database, just go
+
+```sh
+sqlite notes.db
+sqlite> .read schema.sql
+```
+
+and that'll set up the tables.
