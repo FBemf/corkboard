@@ -24,18 +24,18 @@ func makeRouter(templates template.Template, config Config, datastore Datastore)
 
 // basic authentication middleware
 // disabled if credentials == ""
-func Auth(h httprouter.Handle, credentials string) httprouter.Handle {
+func Auth(h httprouter.Handle, credentials map[string]bool) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Get the Basic Authentication credentials
 		user, password, hasAuth := r.BasicAuth()
 
-		if (hasAuth && user+":"+password == credentials) || credentials == "" {
+		if (hasAuth && credentials[user+":"+password]) || credentials == nil {
 			// Delegate request to the given handle
 			h(w, r, ps)
 		} else {
 			// Request Basic Authentication otherwise
 			w.Header().Set("WWW-Authenticate", "Basic realm=Restricted")
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			ErrorPage(w, http.StatusUnauthorized)
 		}
 	}
 }
@@ -58,13 +58,13 @@ func Index(templates template.Template, datastore Datastore, numRecentPosts int)
 		resp.Header().Set("Content-Type", "text/html; charset=UTF-8")
 		recentNotes, err := datastore.getLatestNotes(numRecentPosts)
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("getting recent posts: %v", err)
 			return
 		}
 		err = templates.ExecuteTemplate(resp, "index.html", IndexData{RecentNotes: recentNotes})
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("rendering page: %v", err)
 		}
 	}
@@ -76,19 +76,21 @@ func Note(templates template.Template, datastore Datastore) httprouter.Handle {
 		noteName := params[0].Value
 		data, ok, err := datastore.getNote(noteName)
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("accessing %s: %v", noteName, err)
 			return
 		}
 		if !ok {
-			ErrCode(http.StatusNotFound, "Not Found", resp, req)
+			ErrorPage(resp, http.StatusNotFound)
 			return
 		}
 		resp.Header().Set("Content-Type", "text/html; charset=UTF-8")
 		err = templates.ExecuteTemplate(resp, "note.html",
 			NoteData{Title: noteName, Body: string(data)})
 		if err != nil {
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("writing template: %v", err)
+			return
 		}
 	}
 }
@@ -99,16 +101,18 @@ func RawNote(datastore Datastore) httprouter.Handle {
 		noteName := params[0].Value
 		data, ok, err := datastore.getNote(noteName)
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("accessing %s: %v", noteName, err)
 			return
 		}
 		if !ok {
-			ErrCode(http.StatusNotFound, "Not Found", resp, req)
+			ErrorPage(resp, http.StatusNotFound)
+			return
 		}
 		resp.Header().Set("Content-Type", "text/plain; charset=UTF-8")
 		_, err = resp.Write(data)
 		if err != nil {
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("responding with raw file: %v", err)
 		}
 	}
@@ -122,18 +126,19 @@ func PostNote(datastore Datastore) httprouter.Handle {
 		body := bytes.NewBuffer(nil)
 		_, err := body.ReadFrom(req.Body)
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("error reading request body: %v", err)
 			return
 		}
 		ok, err := datastore.createNote(noteName, body.Bytes())
 		if err != nil {
-			ErrCode(http.StatusInternalServerError, "Internal Server Error", resp, req)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("error writing note %s: %v", noteName, err)
 			return
 		}
 		if !ok {
-			ErrCode(http.StatusConflict, "Conflict", resp, req)
+			ErrorPage(resp, http.StatusConflict)
+			return
 		}
 		log.Printf("New note %s", noteName)
 	}
@@ -145,7 +150,7 @@ func DeleteNote(datastore Datastore) httprouter.Handle {
 		noteName := params[0].Value
 		err := datastore.deleteNote(noteName)
 		if err != nil {
-			resp.WriteHeader(http.StatusInternalServerError)
+			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("error writing note %s: %v", noteName, err)
 			return
 		}
@@ -153,11 +158,6 @@ func DeleteNote(datastore Datastore) httprouter.Handle {
 	}
 }
 
-// simple handler to display an error code to the client
-func ErrCode(code int, msg string, resp http.ResponseWriter, req *http.Request) {
-	resp.Header().Set("Content-Type", "text/plain; charset=UTF-8")
-	_, err := resp.Write([]byte(fmt.Sprintf("%d %s", code, msg)))
-	if err != nil {
-		log.Printf("writing error response: %v", err)
-	}
+func ErrorPage(resp http.ResponseWriter, code int) {
+	http.Error(resp, fmt.Sprintf("%d %s", code, http.StatusText(code)), code)
 }
