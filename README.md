@@ -5,7 +5,7 @@ This is a little pastebin-style service which I whipped up in a couple evenings.
 Specifically, the inspiration for this was that I wanted to be able to go
 
 ```sh
-curl -u user:password "https://corkboard.example.com/name_of_note" -d "Some information, maybe the contents of a file"
+curl -u user:password "https://corkboard.example.com/name_of_note" --data-binary "Some information, or maybe @filename.txt"
 ```
 
 and have that data all go up to `https://corkboard.example.com/name_of_note` for me to find.
