@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+const (
+	NO_CLOBBER = iota
+	CREATED
+	UPDATED
+)
+
 type Datastore struct {
 	mode      int     // database or flatFile
 	database  *sql.DB // nil if mode == flatFile
@@ -39,21 +45,35 @@ func (ds *Datastore) getNote(name string) ([]byte, bool, error) {
 	}
 }
 
-func (ds *Datastore) createNote(name string, body []byte) (bool, error) {
+func (ds *Datastore) setNote(name string, body []byte, clobber bool) (int, error) {
 	if ds.mode == flatFile {
 		notePath := path.Join(ds.directory, name)
 		if _, err := os.Stat(notePath); err == nil {
-			return false, nil
+			if clobber {
+				err := ioutil.WriteFile(notePath, body, 0755)
+				return UPDATED, err
+			} else {
+				// return an error if you're overwriting something
+				return NO_CLOBBER, nil
+			}
+		} else {
+			err := ioutil.WriteFile(notePath, body, 0755)
+			return CREATED, err
 		}
-		err := ioutil.WriteFile(notePath, body, 0755)
-		return true, err
 	} else { //database
 		_, err := ds.database.Exec(`INSERT INTO Notes (Name, Body)
 			VALUES (?, ?)`, name, body)
 		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			return false, nil
+			if clobber {
+				// overwrite the body
+				_, err = ds.database.Exec(`UPDATE Notes SET Body = ? WHERE Name = ?`, body, name)
+				return UPDATED, err
+			} else {
+				// don't clobber a note
+				return NO_CLOBBER, nil
+			}
 		}
-		return true, err
+		return CREATED, err
 	}
 }
 

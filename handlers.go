@@ -15,7 +15,8 @@ func makeRouter(templates template.Template, config Config, datastore Datastore)
 	router := httprouter.New()
 	router.GET("/", Auth(Index(templates, datastore, config.numRecentNotes), config.credentials))
 	router.GET("/note/:note", Auth(Note(templates, datastore), config.credentials))
-	router.POST("/note/:note", Auth(PostNote(datastore), config.credentials))
+	router.POST("/note/:note", Auth(SetNote(datastore, false), config.credentials))
+	router.PUT("/note/:note", Auth(SetNote(datastore, true), config.credentials))
 	router.DELETE("/note/:note", Auth(DeleteNote(datastore), config.credentials))
 	router.GET("/raw/:note", Auth(RawNote(datastore), config.credentials))
 	router.ServeFiles("/static/*filepath", http.Dir(config.staticPath))
@@ -121,7 +122,7 @@ func RawNote(datastore Datastore) httprouter.Handle {
 
 // posts a note
 // request body is the note, not a json
-func PostNote(datastore Datastore) httprouter.Handle {
+func SetNote(datastore Datastore, clobber bool) httprouter.Handle {
 	return func(resp http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		noteName := params[0].Value
 		body := bytes.NewBuffer(nil)
@@ -131,14 +132,18 @@ func PostNote(datastore Datastore) httprouter.Handle {
 			log.Printf("error reading request body: %v", err)
 			return
 		}
-		ok, err := datastore.createNote(noteName, body.Bytes())
+		status, err := datastore.setNote(noteName, body.Bytes(), clobber)
 		if err != nil {
 			ErrorPage(resp, http.StatusInternalServerError)
 			log.Printf("error writing note %s: %v", noteName, err)
 			return
 		}
-		if !ok {
+		if status == NO_CLOBBER {
 			ErrorPage(resp, http.StatusConflict)
+			return
+		} else if status == CREATED {
+			ErrorPage(resp, http.StatusCreated)
+			log.Printf("Updated note %s", noteName)
 			return
 		}
 		log.Printf("New note %s", noteName)
