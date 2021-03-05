@@ -51,7 +51,7 @@ Usage of ./corkboard:
 To set up a new database, just go
 
 ```sh
-sqlite notes.db
+sqlite3 notes.db
 sqlite> .read schema.sql
 ```
 
