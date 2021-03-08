@@ -14,11 +14,12 @@ Other services like this one don't let you specify the note's name, which makes 
 Here's the API:
 
 ```
-GET /note/:note     Returns an HTML page containing the note named :note.
-GET /raw/:note      Returns the raw contents of the note named :note.
-POST /note/:note    Creates a new note named :note. The contents of the note are the body of the request.
-                    Will not let you override a pre-existing note.
-DELETE /note/:note  Removes the note named :note. Returns 200 even if that note didn't exist.
+GET /note/:note         Returns an HTML page containing the note named :note.
+GET /api/note/:note     Returns the raw contents of the note named :note.
+POST /api/note/:note    Creates a new note named :note. The contents of the note are the body of the request.
+POST /api/note/:note    Creates a new note named :note, or overwrites it if it already exists.
+                        The contents of the note are the body of the request.
+DELETE /api/note/:note  Removes the note named :note. Returns 200 even if that note didn't exist.
 ```
 
 And of course the web UI is at `/`.
