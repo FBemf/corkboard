@@ -14,8 +14,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     deleteButton.addEventListener("click", event => {
         event.preventDefault();
+        let noteName = document.getElementById("noteName").textContent;
         if (window.confirm("Are you sure you want to delete this note?")) {
-            fetch(window.location.href, {
+            fetch(`/api/note/${noteName}`, {
                 method: "DELETE",
                 cache: "no-cache",
                 redirect: "follow",

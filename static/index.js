@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
         event.preventDefault();
         let title = titleArea.value;
         let body = bodyArea.value;
-        fetch(`/note/${title}`, {
+        fetch(`/api/note/${title}`, {
             method: "POST",
             cache: "no-cache",
             headers: {
