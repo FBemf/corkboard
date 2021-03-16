@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -11,7 +12,7 @@ import (
 )
 
 // creates an http router and registers all the endpoints
-func makeRouter(templates template.Template, config Config, datastore Datastore) *httprouter.Router {
+func makeRouter(templates *template.Template, static fs.FS, config Config, datastore Datastore) *httprouter.Router {
 	router := httprouter.New()
 	router.GET("/", Auth(Index(templates, datastore, config.numRecentNotes), config.credentials))
 	router.GET("/note/:note", Auth(Note(templates, datastore), config.credentials))
@@ -19,7 +20,7 @@ func makeRouter(templates template.Template, config Config, datastore Datastore)
 	router.PUT("/api/note/:note", Auth(SetNote(datastore, true), config.credentials))
 	router.DELETE("/api/note/:note", Auth(DeleteNote(datastore), config.credentials))
 	router.GET("/api/note/:note", Auth(RawNote(datastore), config.credentials))
-	router.ServeFiles("/static/*filepath", http.Dir(config.staticPath))
+	router.ServeFiles("/static/*filepath", http.FS(static))
 	return router
 }
 
@@ -55,7 +56,7 @@ type NoteData struct {
 
 // displays index page
 // numRecentPosts is the number of recent posts to display
-func Index(templates template.Template, datastore Datastore, numRecentPosts int) httprouter.Handle {
+func Index(templates *template.Template, datastore Datastore, numRecentPosts int) httprouter.Handle {
 	return func(resp http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 		resp.Header().Set("Content-Type", "text/html; charset=UTF-8")
 		recentNotes, err := datastore.getLatestNotes(numRecentPosts)
@@ -73,7 +74,7 @@ func Index(templates template.Template, datastore Datastore, numRecentPosts int)
 }
 
 // displays a note on a pretty html page
-func Note(templates template.Template, datastore Datastore) httprouter.Handle {
+func Note(templates *template.Template, datastore Datastore) httprouter.Handle {
 	return func(resp http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		noteName := params[0].Value
 		data, ok, err := datastore.getNote(noteName)
@@ -143,10 +144,10 @@ func SetNote(datastore Datastore, clobber bool) httprouter.Handle {
 			return
 		} else if status == CREATED {
 			ErrorPage(resp, http.StatusCreated)
-			log.Printf("Updated note %s", noteName)
+			log.Printf("New note %s", noteName)
 			return
 		}
-		log.Printf("New note %s", noteName)
+		log.Printf("Updated note %s", noteName)
 	}
 }
 

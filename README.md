@@ -16,8 +16,9 @@ Here's the API:
 ```
 GET /note/:note         Returns an HTML page containing the note named :note.
 GET /api/note/:note     Returns the raw contents of the note named :note.
-POST /api/note/:note    Creates a new note named :note. The contents of the note are the body of the request.
-POST /api/note/:note    Creates a new note named :note, or overwrites it if it already exists.
+POST /api/note/:note    Creates a new note named :note.
+                        The contents of the note are the body of the request.
+PUT /api/note/:note     Creates a new note named :note, or overwrites it if it already exists.
                         The contents of the note are the body of the request.
 DELETE /api/note/:note  Removes the note named :note. Returns 200 even if that note didn't exist.
 ```
@@ -27,33 +28,25 @@ And of course the web UI is at `/`.
 Here's the help page:
 
 ```
-Usage of ./corkboard:
+Usage of corkboard:
   -creds string
-    	Access credentials in the form "username:password".
+        Access credentials in the form
+        "username:password".
   -creds-file string
-    	Path to a file holding login credentials in the form "username:password". Each line holds a valid set of credentials.
+        Path to a file holding login credentials in the form
+        "username:password". Each line holds a valid set of credentials.
   -db-path string
-    	Path to the sqlite db. (default "./notes.db")
+        Path to the sqlite db. (default "./notes.db")
+  -migrate
+        Run schema and all migrations upon database, then exit.
   -note-expiry int
-    	Notes which have not been viewed in this many days will be deleted. If set to zero, notes never expire.. (default 7)
-  -note-path string
-    	Path to the directory where the notes are stored. If this is set, store notes as flat files instead of in a db.
+        Notes which have not been viewed in this many days will be deleted.
+        If set to zero, notes never expire. (default 7)
   -port int
-    	Port to serve the application on. (default 8080)
+        Port to serve the application on. (default 8080)
   -recent-notes int
-    	Display this many recent notes on the main page. (default 8)
-  -static-path string
-    	Path to the directory where static assets are stored. (default "./static/")
-  -template-path string
-    	Path to the directory where html templates are stored. (default "./templates/")
-
+        Display this many recent notes on the main page.
+         (default 8)
 ```
 
-To set up a new database, just go
-
-```sh
-sqlite3 notes.db
-sqlite> .read schema.sql
-```
-
-and that'll set up the tables.
+To set up a new database or to automatically run migrations after an update, run `./corkboard -migrate`.

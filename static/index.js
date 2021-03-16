@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 statusArea.textContent = "";
                 titleArea.value = "";
                 bodyArea.value = "";
+                window.location.reload(true);
             } else {
                 if (resp.status == 409) {
                     statusArea.textContent = "That note already exists!";

@@ -3,34 +3,34 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"embed"
 	"flag"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const (
-	// storage modes
-	// if storage mode is "database," notes are stored in a sqlite db
-	// if storage mode is "flatFile," notes are stored as text files
-	database = iota
-	flatFile
-)
+//go:embed templates
+var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
+
+//go:embed schema
+var schemaFS embed.FS
 
 // delete expired notes every hour
 const cleanupInterval = time.Hour
 
 // Config stores data derived from the command line arguments
 type Config struct {
-	templatePath   string
-	notePath       string
-	staticPath     string
+	migrate        bool
 	databasePath   string
 	credentials    map[string]bool
 	port           int
@@ -41,44 +41,49 @@ type Config struct {
 
 func main() {
 	config := parseArgs()
-	templates := makeTemplates(config.templatePath)
 
-	var datastore Datastore
-	if config.storageMode == database {
-		// set up sqlite database
-		db, err := sql.Open("sqlite3", config.databasePath)
-		if err != nil {
-			log.Fatalf("error opening db %s", config.databasePath)
-		}
-		defer db.Close()
-		datastore = Datastore{
-			database,
-			db,
-			"",
-		}
-		if config.noteExpiryTime != 0 {
-			// begin deleting expired notes every hour
-			go func() {
-				for {
-					time.Sleep(cleanupInterval)
-					datastore.deleteOldNotes(config.noteExpiryTime)
-				}
-			}()
-		}
-	} else {
-		// get ready to store notes as text files
-		err := os.MkdirAll(config.notePath, 0755)
-		if err != nil {
-			log.Fatalf("creating note directory: %s", config.notePath)
-		}
-		datastore = Datastore{
-			flatFile,
-			nil,
-			config.notePath,
-		}
+	templates, err := template.ParseFS(templateFS, "templates/*")
+	if err != nil {
+		log.Fatal(err)
+	}
+	static, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		log.Fatal(err)
+	}
+	migrations, err := fs.Sub(schemaFS, "schema")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	router := makeRouter(templates, config, datastore)
+	var datastore Datastore
+	// set up sqlite database
+	db, err := sql.Open("sqlite3", config.databasePath)
+	if err != nil {
+		log.Fatalf("error opening db %s", config.databasePath)
+	}
+	datastore = Datastore{db}
+	defer datastore.Close()
+
+	if config.migrate {
+		err = datastore.RunMigrations(migrations)
+		if err != nil {
+			log.Fatalf("error running schema: %s\n", err)
+		}
+		datastore.Close()
+		return
+	}
+
+	if config.noteExpiryTime != 0 {
+		// begin deleting expired notes every hour
+		go func() {
+			for {
+				time.Sleep(cleanupInterval)
+				datastore.deleteOldNotes(config.noteExpiryTime)
+			}
+		}()
+	}
+
+	router := makeRouter(templates, static, config, datastore)
 	log.Print("Running")
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(config.port), router))
 }
@@ -92,10 +97,8 @@ func parseArgs() Config {
 	credentials := flag.String("creds", "", "Access credentials in the form\n\"username:password\".")
 	flag.IntVar(&config.port, "port", 8080, "Port to serve the application on.")
 	noteExpiryTime := flag.Int("note-expiry", 7, "Notes which have not been viewed in this many days will be deleted.\nIf set to zero, notes never expire.")
-	flag.StringVar(&config.templatePath, "template-path", "./templates/", "Path to the directory where html templates are stored.\n")
-	flag.StringVar(&config.staticPath, "static-path", "./static/", "Path to the directory where static assets are stored.\n")
 	flag.IntVar(&config.numRecentNotes, "recent-notes", 8, "Display this many recent notes on the main page.\n")
-	flag.StringVar(&config.notePath, "note-path", "", "Path to the directory where the notes are stored. If this is set,\nstore notes as flat files instead of in a db.")
+	flag.BoolVar(&config.migrate, "migrate", false, "Run schema and all migrations upon database, then exit.")
 	flag.Parse()
 
 	if *noteExpiryTime < 0 {
@@ -107,13 +110,6 @@ func parseArgs() Config {
 
 	if config.numRecentNotes < 0 {
 		log.Fatal("bad arguments: -recent-notes must be non-negative")
-	}
-
-	// storageMode is based on the presence of notePath
-	if config.notePath == "" {
-		config.storageMode = database
-	} else {
-		config.storageMode = flatFile
 	}
 
 	// config.credentials is a map of all valid user:password strings
@@ -147,13 +143,4 @@ func parseArgs() Config {
 	}
 
 	return config
-}
-
-// builds all the templates under the templates directory
-func makeTemplates(templatePath string) template.Template {
-	t, err := template.ParseGlob(path.Join(templatePath, "*"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	return *t
 }
