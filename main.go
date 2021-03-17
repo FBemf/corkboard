@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"flag"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -15,6 +16,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+const corkboardVersion = "v0.1.0"
 
 //go:embed templates
 var templateFS embed.FS
@@ -35,11 +38,16 @@ type Config struct {
 	port           int
 	noteExpiryTime time.Duration
 	numRecentNotes int
-	storageMode    int // database or flatFile
+	printVersion   bool
 }
 
 func main() {
 	config := parseArgs()
+
+	if config.printVersion {
+		fmt.Printf("corkboard %s\n", corkboardVersion)
+		return
+	}
 
 	templates, err := template.ParseFS(templateFS, "templates/*")
 	if err != nil {
@@ -93,6 +101,7 @@ func parseArgs() Config {
 	flag.IntVar(&config.port, "port", 8080, "Port to serve the application on.")
 	noteExpiryTime := flag.Int("note-expiry", 7, "Notes which have not been viewed in this many days will be deleted.\nIf set to zero, notes never expire.")
 	flag.IntVar(&config.numRecentNotes, "recent-notes", 8, "Display this many recent notes on the main page.\n")
+	flag.BoolVar(&config.printVersion, "version", false, "Print the version number and exit")
 	flag.Parse()
 
 	if *noteExpiryTime < 0 {

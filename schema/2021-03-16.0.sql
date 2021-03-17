@@ -1,4 +1,5 @@
 -- Style changes
+-- I wanted to depluralize "Notes" and rolled with it.
 -- Partially exists just to test the migrations
 
 pragma foreign_keys = on;
