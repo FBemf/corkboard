@@ -1,3 +1,4 @@
 notes/
 *.db
+*.db-journal
 corkboard

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -22,33 +23,58 @@ type Datastore struct {
 	database *sql.DB
 }
 
+type migration struct {
+	date   string
+	number int
+}
+
+func (m1 migration) before(m2 migration) bool {
+	return m1.date < m2.date || (m1.date == m2.date && m1.number < m2.number)
+}
+
 func (ds *Datastore) RunMigrations(migrations fs.FS) error {
-	// initialize _migration table, get latest migration
+	// initialize _migration table
 	_, err := ds.database.Exec(`create table if not exists _migration (
-		date	date,
+		date	text,
 		number	number,
 		primary key (date, number))`)
 	if err != nil {
 		return fmt.Errorf("creating _migration: %s", err)
 	}
-	last_migration, err := ds.database.Query(`select * from _migration order by date desc, number desc limit 1`)
+
+	// stores list of migrations & whether they've been applied
+	migrationSet := make(map[migration]bool)
+
+	// find date & number of lastest migration
+	// if there have been no migrations (incuding original schema), this DB is new
+	rows, err := ds.database.Query(`select * from _migration`)
 	if err != nil {
-		return fmt.Errorf("finding last migration: %s", err)
+		return fmt.Errorf("finding migrations: %s", err)
 	}
 
-	db_empty := true
-	var last_date string
-	var last_number int
-	if last_migration.Next() {
-		db_empty = false
-		last_migration.Scan(&last_date, &last_number)
-		if last_migration.Next() {
-			return fmt.Errorf("'limit 1' migration query returned multiple rows")
+	justBegun := true
+	latestMigration := migration{}
+	for rows.Next() {
+		var date string
+		var number int
+		err = rows.Scan(&date, &number)
+		if err != nil {
+			return fmt.Errorf("reading row of migrations: %s", err)
 		}
-	} else {
+		migrationSet[migration{date, number}] = false
+		if justBegun {
+			latestMigration = migration{date, number}
+			justBegun = false
+		} else {
+			if latestMigration.before(migration{date, number}) {
+				latestMigration = migration{date, number}
+			}
+		}
+	}
+	if len(migrationSet) == 0 {
 		log.Println("creating database")
 	}
-	migrations_performed := 0
+	migrationsPerformed := 0
 
 	// Execute only migrations which are more recent than the latest migration
 	// Because walkdir traverses the directory in lexicographical order, we don't need
@@ -61,6 +87,7 @@ func (ds *Datastore) RunMigrations(migrations fs.FS) error {
 			return nil
 		}
 
+		// parse & validate migration name
 		filename := path.Base(filepath)
 		match, err := regexp.MatchString(`^\d{4}-\d{2}-\d{2}\.\d+\.sql$`, filename)
 		if err != nil {
@@ -69,39 +96,81 @@ func (ds *Datastore) RunMigrations(migrations fs.FS) error {
 		if !match {
 			return fmt.Errorf("parsing migration name %s: bad format", filename)
 		}
-		name_components := strings.Split(filename, ".")
-		if len(name_components) != 3 {
+		nameComponents := strings.Split(filename, ".")
+		if len(nameComponents) != 3 {
 			return fmt.Errorf("parsing migration name %s: bad format", filename)
 		}
-		date := name_components[0]
-		number, err := strconv.ParseInt(name_components[1], 10, 32)
+		date := nameComponents[0]
+		number64, err := strconv.ParseInt(nameComponents[1], 10, 32)
 		if err != nil {
 			return fmt.Errorf("parsing migration name %s: number too large", filename)
 		}
+		number := int(number64)
+		newMigration := migration{date, number}
 
-		if !db_empty {
-			if last_date > date || (last_date == date && last_number >= int(number)) {
-				return nil
+		// if migration is already in db
+		isRun, exists := migrationSet[newMigration]
+		if exists {
+			if isRun {
+				return fmt.Errorf("duplicate migration: %s.%d has already been visited", newMigration.date, newMigration.number)
 			}
+			if latestMigration.before(newMigration) {
+				// this migration is somehow out of order
+				return fmt.Errorf("migrations are out of order: old migration %s.%d is newer than latest migration %s.%d", newMigration.date, newMigration.number, latestMigration.date, latestMigration.number)
+			}
+			// skip old migration
+			migrationSet[newMigration] = true
+			return nil
+
+		} else {
+			// this is a new migration
+
+			if !latestMigration.before(newMigration) {
+				return fmt.Errorf("migrations are out of order: new migration %s.%d is no newer than than latest migration %s.%d", newMigration.date, newMigration.number, latestMigration.date, latestMigration.number)
+			}
+			// this is our new latest migration; continue as normal
+			migrationSet[newMigration] = true
+			latestMigration = newMigration
 		}
 
+		// do migration
 		file, err := fs.ReadFile(migrations, filepath)
 		if err != nil {
 			return fmt.Errorf("reading migration file %s: %s", filepath, err)
 		}
-		_, err = ds.database.Exec(string(file))
+		ctx, stop := context.WithCancel(context.Background())
+		tx, err := ds.database.BeginTx(ctx, nil)
 		if err != nil {
+			stop()
+			return fmt.Errorf("beginning transaction: %s", err)
+		}
+		_, err = tx.Exec(string(file))
+		if err != nil {
+			stop()
 			return fmt.Errorf("running migration %s: %s", filepath, err)
 		}
-		migrations_performed += 1
-		_, err = ds.database.Exec(`insert into _migration values (?, ?)`, date, number)
+		migrationsPerformed += 1
+		_, err = tx.Exec(`insert into _migration values (?, ?)`, date, number)
 		if err != nil {
+			stop()
 			return fmt.Errorf("inserting migration into table: %s", err)
 		}
+		err = tx.Commit()
+		if err != nil {
+			stop()
+			return fmt.Errorf("committing migration %s: %s", filepath, err)
+		}
+		stop()
 		return nil
 	})
-	if migrations_performed > 0 {
-		log.Printf("applied %d migrations", migrations_performed)
+
+	for m, done := range migrationSet {
+		if !done {
+			return fmt.Errorf("missing migration: migration %s.%d was never visited", m.date, m.number)
+		}
+	}
+	if migrationsPerformed > 0 {
+		log.Printf("applied %d migrations", migrationsPerformed)
 	}
 	return err
 }
@@ -111,7 +180,7 @@ func (ds *Datastore) Close() error {
 }
 
 func (ds *Datastore) getNote(name string) ([]byte, bool, error) {
-	row := ds.database.QueryRow(`select (body) from note where name = ?`, name)
+	row := ds.database.QueryRow(`select (body) from "note" where name = ?`, name)
 	buf := []byte{}
 	if err := row.Scan(&buf); err != nil {
 		if err == sql.ErrNoRows {
@@ -121,7 +190,7 @@ func (ds *Datastore) getNote(name string) ([]byte, bool, error) {
 		}
 	}
 	_, err := ds.database.Exec(
-		`update note set last_viewed = datetime("now") where name = ?`, name)
+		`update "note" set last_viewed = datetime("now") where name = ?`, name)
 	if err != nil {
 		return buf, true, err
 	}
@@ -129,12 +198,12 @@ func (ds *Datastore) getNote(name string) ([]byte, bool, error) {
 }
 
 func (ds *Datastore) setNote(name string, body []byte, clobber bool) (int, error) {
-	_, err := ds.database.Exec(`insert into note (name, body)
+	_, err := ds.database.Exec(`insert into "note" (name, body)
 			values (?, ?)`, name, body)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
 		if clobber {
 			// overwrite the body
-			_, err = ds.database.Exec(`update note set body = ? where name = ?`, body, name)
+			_, err = ds.database.Exec(`update "note" set body = ? where name = ?`, body, name)
 			return UPDATED, err
 		} else {
 			// don't clobber a note
@@ -145,7 +214,7 @@ func (ds *Datastore) setNote(name string, body []byte, clobber bool) (int, error
 }
 
 func (ds *Datastore) deleteNote(name string) error {
-	_, err := ds.database.Exec("delete from note where name = ?", name)
+	_, err := ds.database.Exec(`delete from "note" where name = ?`, name)
 	return err
 }
 
@@ -153,7 +222,7 @@ func (ds *Datastore) deleteNote(name string) error {
 func (ds *Datastore) getLatestNotes(maxNotes int) ([]string, error) {
 	var names = make([]string, 0)
 	rows, err := ds.database.Query(
-		`select (name) from note order by create_time asc limit ?`, maxNotes)
+		`select (name) from "note" order by create_time asc limit ?`, maxNotes)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +242,7 @@ func (ds *Datastore) getLatestNotes(maxNotes int) ([]string, error) {
 // deletes notes older than `age`
 func (ds *Datastore) deleteOldNotes(age time.Duration) error {
 	_, err := ds.database.Exec(
-		`delete from note where strftime("%s", "now") - strftime("%s", last_viewed) > ?`,
+		`delete from "note" where strftime("%s", "now") - strftime("%s", last_viewed) > ?`,
 		age/time.Second)
 	return err
 }

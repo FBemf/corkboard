@@ -7,7 +7,7 @@ create table _migration (
 	primary key (date, number)
 );
 
-create table note (
+create table "note" (
     name        text not null primary key,
     body        blob not null,
     create_time  datetime default current_timestamp,
