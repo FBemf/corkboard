@@ -36,8 +36,6 @@ Usage of corkboard:
         Each line holds a valid set of credentials.
   -db-path string
         Path to the sqlite db. (default "./notes.db")
-  -migrate
-        Run schema and all migrations upon database, then exit.
   -note-expiry int
         Notes which have not been viewed in this many days will be deleted.
         If set to zero, notes never expire. (default 7)
@@ -46,5 +44,3 @@ Usage of corkboard:
   -recent-notes int
         Display this many recent notes on the main page. (default 8)
 ```
-
-To set up a new database or to automatically run migrations after an update, run `./corkboard -db-path <database> -migrate`.

@@ -30,7 +30,6 @@ const cleanupInterval = time.Hour
 
 // Config stores data derived from the command line arguments
 type Config struct {
-	migrate        bool
 	databasePath   string
 	credentials    map[string]bool
 	port           int
@@ -64,13 +63,9 @@ func main() {
 	datastore = Datastore{db}
 	defer datastore.Close()
 
-	if config.migrate {
-		err = datastore.RunMigrations(migrations)
-		if err != nil {
-			log.Fatalf("error running schema: %s\n", err)
-		}
-		datastore.Close()
-		return
+	err = datastore.RunMigrations(migrations)
+	if err != nil {
+		log.Fatalf("error running schema: %s\n", err)
 	}
 
 	if config.noteExpiryTime != 0 {
@@ -98,7 +93,6 @@ func parseArgs() Config {
 	flag.IntVar(&config.port, "port", 8080, "Port to serve the application on.")
 	noteExpiryTime := flag.Int("note-expiry", 7, "Notes which have not been viewed in this many days will be deleted.\nIf set to zero, notes never expire.")
 	flag.IntVar(&config.numRecentNotes, "recent-notes", 8, "Display this many recent notes on the main page.\n")
-	flag.BoolVar(&config.migrate, "migrate", false, "Run schema and all migrations upon database, then exit.")
 	flag.Parse()
 
 	if *noteExpiryTime < 0 {

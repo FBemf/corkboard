@@ -1,3 +1,5 @@
+-- Original schema
+
 create table if not exists Notes (
     Name        text not null primary key,
     Body        blob not null,
