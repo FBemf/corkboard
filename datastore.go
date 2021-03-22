@@ -33,8 +33,12 @@ func (m1 migration) before(m2 migration) bool {
 }
 
 func (ds *Datastore) RunMigrations(migrations fs.FS) error {
+	_, err := ds.database.Exec(`pragma foreign_keys = on`)
+	if err != nil {
+		return fmt.Errorf("applying pragma: %s", err)
+	}
 	// initialize _migration table
-	_, err := ds.database.Exec(`create table if not exists _migration (
+	_, err = ds.database.Exec(`create table if not exists _migration (
 		date	text,
 		number	number,
 		primary key (date, number))`)
