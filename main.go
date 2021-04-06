@@ -64,7 +64,7 @@ func main() {
 
 	var datastore Datastore
 	// set up sqlite database
-	db, err := sql.Open("sqlite3", config.databasePath)
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?foreign_keys=1", config.databasePath))
 	if err != nil {
 		log.Fatalf("error opening db %s", config.databasePath)
 	}
